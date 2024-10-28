@@ -1,3 +1,4 @@
+import os
 import feedparser
 import argparse
 from googleapiclient.discovery import build
@@ -8,7 +9,12 @@ import time
 from apscheduler.schedulers.background import BackgroundScheduler
 
 HOURS_FROM_PUBLISH = [2, 5, 24, 7 * 24, 30 * 24]
-API_KEY = "AIzaSyDuEXPnyMO4ZzkwiUEH1SppQjdiXoyVjGg"
+
+try:
+    API_KEY = os.environ["YT_API_KEY"]
+except KeyError:
+    raise ValueError("YT_API_KEY not set")
+
 TRENDING_MULTIPLIER = 20  # 20x
 AVG_WINDOW_SIZE = 5  # 5 videos
 
