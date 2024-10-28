@@ -16,7 +16,14 @@ try:
 except KeyError:
     raise ValueError("YT_API_KEY not set")
 
-TRENDING_MULTIPLIER = 20  # 20x
+TRENDING_MULTIPLIER = {
+    2: 2,
+    5: 5,
+    24: 10,
+    7 * 24: 15,
+    30 * 24: 20,
+}  # from 2 to 20x based on hours from publish
+
 AVG_WINDOW_SIZE = 5  # 5 videos
 
 TELEGRAM_CHAT_ID = None
@@ -146,7 +153,7 @@ def detect_trending(channel_id, hours_from_publish, views):
         (channel_id,),
     )
     avg_views = cursor.fetchone()[0]
-    return views >= avg_views * TRENDING_MULTIPLIER
+    return views >= avg_views * TRENDING_MULTIPLIER[hours_from_publish]
 
 
 def update_channel_stats(channel_id):
