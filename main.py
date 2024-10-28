@@ -5,6 +5,7 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta, UTC
 from db import cursor, conn
 import time
+from telegram import send_message
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -17,6 +18,8 @@ except KeyError:
 
 TRENDING_MULTIPLIER = 20  # 20x
 AVG_WINDOW_SIZE = 5  # 5 videos
+
+TELEGRAM_CHAT_ID = None
 
 
 def get_video_comments(video_id):
@@ -122,6 +125,12 @@ def check_video(video_id, channel_id, hours_from_publish):
 
     if detect_trending(channel_id, hours_from_publish, meta["views"]):
         print(f"Trending video {video_id} for channel {channel_id}!!!")
+        if TELEGRAM_CHAT_ID:
+
+            send_message(
+                TELEGRAM_CHAT_ID,
+                f"Trending video {video_id} for channel {channel_id}!!!",
+            )
         cursor.execute(
             "INSERT INTO trending_videos (video_yt_id, channel_yt_id) VALUES (?, ?)",
             (video_id, channel_id),
@@ -219,6 +228,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--poll_interval", type=int, help="Poll interval in seconds", default=60
     )
+    parser.add_argument(
+        "--telegram_chat_id", type=str, help="Telegram chat ID to send messages to"
+    )
     args = parser.parse_args()
 
     scheduler = BackgroundScheduler()
@@ -229,6 +241,9 @@ if __name__ == "__main__":
     elif args.command == "remove-channel" and args.channel_id:
         remove_channel(args.channel_id)
     elif args.command == "run" and args.poll_interval:
+        if args.telegram_chat_id:
+            TELEGRAM_CHAT_ID = args.telegram_chat_id
+
         poll_channels(scheduler, args.poll_interval)
     else:
         parser.print_help()
