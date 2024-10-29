@@ -189,9 +189,7 @@ def check_video(video_id, channel_id, hours_from_publish):
         print(f"Trending video {video_id} for channel {channel_id}!!!")
         if telegram_chat_id:
             send_message(
-                telegram_chat_id,
                 f"Trending video {video_id} for channel {channel_id}!!!",
-                telegram_api_key,
             )
         thread_cursor.execute(
             "INSERT INTO trending_videos (video_yt_id, channel_yt_id) VALUES (?, ?)",
@@ -211,6 +209,10 @@ def detect_trending(
         (channel_id,),
     )
     avg_views = cursor.fetchone()[0]
+
+    if not avg_views:
+        return False
+
     return views >= avg_views * TRENDING_MULTIPLIER[hours_from_publish]
 
 
