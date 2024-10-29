@@ -6,6 +6,7 @@ cursor = conn.cursor()
 cursor.execute(
     """CREATE TABLE IF NOT EXISTS channels (
         yt_id TEXT NOT NULL UNIQUE PRIMARY KEY,
+        url TEXT NOT NULL UNIQUE,
         avg_views_2h INTEGER,
         avg_views_5h INTEGER,
         avg_views_24h INTEGER,

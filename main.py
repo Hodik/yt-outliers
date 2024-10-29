@@ -1,12 +1,11 @@
 import os
+import requests
 import feedparser
 import argparse
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta, UTC
 from db import cursor, conn
 import time
-from telegram import send_message
-
 from apscheduler.schedulers.background import BackgroundScheduler
 
 HOURS_FROM_PUBLISH = [2, 5, 24, 7 * 24, 30 * 24]
@@ -26,7 +25,18 @@ TRENDING_MULTIPLIER = {
 
 AVG_WINDOW_SIZE = 5  # 5 videos
 
-TELEGRAM_CHAT_ID = None
+
+telegram_api_key = None
+telegram_chat_id = None
+
+
+def send_message(message):
+    resp = requests.post(
+        f"https://api.telegram.org/bot{telegram_api_key}/sendMessage",
+        data={"chat_id": telegram_chat_id, "text": message},
+    )
+
+    resp.raise_for_status()
 
 
 def get_video_comments(video_id):
@@ -81,6 +91,24 @@ def get_video_details(video_id):
         return None
 
 
+def get_channel_id_from_url(channel_url):
+    # Extract the handle from the URL
+    handle = channel_url.split("@")[-1]
+
+    # Build the YouTube service
+    youtube = build("youtube", "v3", developerKey=API_KEY)
+
+    # Request channel details using the handle
+    request = youtube.channels().list(part="id", forHandle=handle)
+    response = request.execute()
+
+    # Extract the channel ID from the response
+    if response["items"]:
+        return response["items"][0]["id"]
+    else:
+        raise ValueError("Channel not found for the given handle")
+
+
 def get_latest_videos(channel_id, max_entries=5):
     # Build the YouTube service
     feed = feedparser.parse(
@@ -98,13 +126,13 @@ def get_latest_videos(channel_id, max_entries=5):
     return videos
 
 
-def add_channel(channel_id):
-    cursor.execute("INSERT INTO channels (yt_id) VALUES (?)", (channel_id,))
+def add_channel(channel_id, url):
+    cursor.execute("INSERT INTO channels (yt_id, url) VALUES (?, ?)", (channel_id, url))
     conn.commit()
 
 
-def remove_channel(channel_id):
-    cursor.execute("DELETE FROM channels WHERE yt_id = ?", (channel_id,))
+def remove_channel(channel_url):
+    cursor.execute("DELETE FROM channels WHERE url = ?", (channel_url,))
     conn.commit()
 
 
@@ -132,11 +160,11 @@ def check_video(video_id, channel_id, hours_from_publish):
 
     if detect_trending(channel_id, hours_from_publish, meta["views"]):
         print(f"Trending video {video_id} for channel {channel_id}!!!")
-        if TELEGRAM_CHAT_ID:
-
+        if telegram_chat_id:
             send_message(
-                TELEGRAM_CHAT_ID,
+                telegram_chat_id,
                 f"Trending video {video_id} for channel {channel_id}!!!",
+                telegram_api_key,
             )
         cursor.execute(
             "INSERT INTO trending_videos (video_yt_id, channel_yt_id) VALUES (?, ?)",
@@ -176,7 +204,10 @@ def video_exists(video_id):
 
 
 def schedule_checks(
-    video_id, channel_id, publish_date: str, scheduler: BackgroundScheduler
+    video_id,
+    channel_id,
+    publish_date: str,
+    scheduler: BackgroundScheduler,
 ):
     for interval in HOURS_FROM_PUBLISH:
         next_check = publish_date + timedelta(hours=interval)
@@ -221,7 +252,21 @@ def poll_channels(scheduler: BackgroundScheduler, interval: int):
         print("Polling stopped")
         scheduler.shutdown()
         conn.close()
-        raise
+        quit(0)
+
+
+def server(poll_interval: int, chat_id: str, api_key: str):
+    global telegram_api_key, telegram_chat_id
+    telegram_api_key = api_key
+    telegram_chat_id = chat_id
+
+    scheduler = BackgroundScheduler()
+    scheduler.start()
+
+    poll_channels(scheduler, poll_interval)
+
+    scheduler.shutdown()
+    conn.close()
 
 
 if __name__ == "__main__":
@@ -240,20 +285,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    scheduler = BackgroundScheduler()
-    scheduler.start()
-
     if args.command == "add-channel" and args.channel_id:
         add_channel(args.channel_id)
     elif args.command == "remove-channel" and args.channel_id:
         remove_channel(args.channel_id)
     elif args.command == "run" and args.poll_interval:
-        if args.telegram_chat_id:
-            TELEGRAM_CHAT_ID = args.telegram_chat_id
-
-        poll_channels(scheduler, args.poll_interval)
+        server(args.poll_interval, args.telegram_chat_id, args.telegram_api_key)
     else:
         parser.print_help()
-
-    scheduler.shutdown()
-    conn.close()
