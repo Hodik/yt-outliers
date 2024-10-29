@@ -3,6 +3,7 @@ import requests
 import feedparser
 import argparse
 import sqlite3
+import threading
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta, UTC
 from db import create_connection
@@ -27,6 +28,7 @@ TRENDING_MULTIPLIER = {
 
 AVG_WINDOW_SIZE = 5  # 5 videos
 
+db_lock = threading.Lock()
 
 telegram_api_key = None
 telegram_chat_id = None
@@ -176,28 +178,30 @@ def check_video(video_id, channel_id, hours_from_publish):
         f"Checking video {video_id} for channel {channel_id} in {hours_from_publish} hours"
     )
     meta = get_video_details(video_id)
-    add_video_meta(
-        video_id,
-        meta["views"],
-        meta["likes"],
-        meta["comments"],
-        hours_from_publish,
-        thread_conn,
-    )
 
-    if detect_trending(channel_id, hours_from_publish, meta["views"], thread_conn):
-        print(f"Trending video {video_id} for channel {channel_id}!!!")
-        if telegram_chat_id:
-            send_message(
-                f"Trending video {video_id} for channel {channel_id}!!!",
-            )
-        thread_cursor.execute(
-            "INSERT INTO trending_videos (video_yt_id, channel_yt_id) VALUES (?, ?)",
-            (video_id, channel_id),
+    with db_lock:
+        add_video_meta(
+            video_id,
+            meta["views"],
+            meta["likes"],
+            meta["comments"],
+            hours_from_publish,
+            thread_conn,
         )
-        thread_conn.commit()
 
-    update_channel_stats(channel_id, thread_conn)
+        if detect_trending(channel_id, hours_from_publish, meta["views"], thread_conn):
+            print(f"Trending video {video_id} for channel {channel_id}!!!")
+            if telegram_chat_id:
+                send_message(
+                    f"Trending video {video_id} for channel {channel_id}!!!",
+                )
+            thread_cursor.execute(
+                "INSERT INTO trending_videos (video_yt_id, channel_yt_id) VALUES (?, ?)",
+                (video_id, channel_id),
+            )
+            thread_conn.commit()
+
+        update_channel_stats(channel_id, thread_conn)
 
 
 def detect_trending(
