@@ -10,7 +10,7 @@ from telegram.ext import (
     filters,
 )
 from main import add_channel, remove_channel, server, get_channel_id_from_url
-
+from db import create_connection, create_tables
 
 TELEGRAM_API_KEY = os.environ.get("TELEGRAM_API_KEY")
 
@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Global variable to store the server process
 server_process = None
+conn = None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -44,7 +45,7 @@ async def add_channel_command(
     for channel_url in context.args:
         try:
             channel_id = get_channel_id_from_url(channel_url)
-            add_channel(channel_id, channel_url)
+            add_channel(channel_id, channel_url, conn)
             await update.message.reply_text(
                 f"Channel {channel_url} with id {channel_id} added."
             )
@@ -60,7 +61,7 @@ async def remove_channel_command(
         return
 
     channel_url = context.args[0]
-    remove_channel(channel_url)
+    remove_channel(channel_url, conn)
     await update.message.reply_text(f"Channel {channel_url} removed.")
 
 
@@ -99,38 +100,13 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(update.message.text)
 
 
-async def handle_csv_upload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle CSV file upload and add channels."""
-    document: Document = update.message.document
-
-    if document.mime_type == "text/csv":
-        file_path = await document.get_file().download()
-        await update.message.reply_text("CSV file received. Processing...")
-
-        try:
-            with open(file_path, mode="r", newline="") as csvfile:
-                csvreader = csv.reader(csvfile)
-                for row in csvreader:
-                    if row:  # Ensure the row is not empty
-                        channel_url = row[0]
-                        channel_id = get_channel_id_from_url(channel_url)
-                        add_channel(channel_id, channel_url)
-                        await update.message.reply_text(
-                            f"Channel {channel_url} with id {channel_id} added."
-                        )
-        except Exception as e:
-            await update.message.reply_text(f"An error occurred: {e}")
-        finally:
-            os.remove(file_path)  # Clean up the downloaded file
-    else:
-        await update.message.reply_text("Please upload a valid CSV file.")
-
-
 def main() -> None:
     """Start the bot."""
+    global conn
+    conn = create_connection()
+    create_tables(conn)
     # Create the Application and pass it your bot's token.
 
-    print(TELEGRAM_API_KEY)
     application = Application.builder().token(TELEGRAM_API_KEY).build()
 
     # Register command handlers
