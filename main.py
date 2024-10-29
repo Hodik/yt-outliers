@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, UTC
 from db import cursor, conn
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.job import Job
 
 HOURS_FROM_PUBLISH = [2, 5, 24, 7 * 24, 30 * 24]
 
@@ -28,6 +29,7 @@ AVG_WINDOW_SIZE = 5  # 5 videos
 
 telegram_api_key = None
 telegram_chat_id = None
+jobs: list[Job] = []
 
 
 def send_message(message):
@@ -153,6 +155,9 @@ def add_video_meta(video_id, views, likes, comments, hours_from_publish):
 
 
 def check_video(video_id, channel_id, hours_from_publish):
+    print(
+        f"Checking video {video_id} for channel {channel_id} in {hours_from_publish} hours"
+    )
     meta = get_video_details(video_id)
     add_video_meta(
         video_id, meta["views"], meta["likes"], meta["comments"], hours_from_publish
@@ -203,6 +208,13 @@ def video_exists(video_id):
     return cursor.fetchone() is not None
 
 
+def print_jobs():
+    print("Active jobs:")
+    for job in jobs:
+        if job.next_run_time:
+            print(job.id, job.next_run_time, job.func, job.args)
+
+
 def schedule_checks(
     video_id,
     channel_id,
@@ -211,12 +223,16 @@ def schedule_checks(
 ):
     for interval in HOURS_FROM_PUBLISH:
         next_check = publish_date + timedelta(hours=interval)
-        scheduler.add_job(
+        job = scheduler.add_job(
             check_video,
             "date",
             run_date=next_check,
+            timezone="UTC",
             args=[video_id, channel_id, interval],
         )
+        jobs.append(job)
+
+    print_jobs()
 
 
 def poll_channels(scheduler: BackgroundScheduler, interval: int):
@@ -224,7 +240,6 @@ def poll_channels(scheduler: BackgroundScheduler, interval: int):
         while True:
             channels = cursor.execute("SELECT * FROM channels").fetchall()
             for channel in channels:
-                print(f"Polling channel {channel[0]}")
                 videos = get_latest_videos(channel[0], 5)
                 for video in videos:
 
