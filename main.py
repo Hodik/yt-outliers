@@ -325,6 +325,9 @@ def poll_channels(
                         print(
                             f"Scheduling checks for video {video['video_id']} for channel {channel[0]}"
                         )
+                        send_message(
+                            f"New video was uploaded to {channel[1]}: {video['title']} https://www.youtube.com/watch?v={video['video_id']}"
+                        )
                         add_video(
                             video["video_id"],
                             channel[0],
