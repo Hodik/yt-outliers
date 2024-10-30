@@ -10,6 +10,7 @@ from db import create_connection
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.job import Job
+from recommendations import get_recommendations
 
 HOURS_FROM_PUBLISH = [2, 5, 24, 7 * 24, 30 * 24]
 
@@ -42,32 +43,6 @@ def send_message(message):
     )
 
     resp.raise_for_status()
-
-
-def get_video_comments(video_id):
-    # Build the YouTube service
-    youtube = build("youtube", "v3", developerKey=API_KEY)
-
-    # Initialize a list to store comments
-    comments = []
-
-    # Request the comments
-    request = youtube.commentThreads().list(
-        part="snippet", videoId=video_id, textFormat="plainText"
-    )
-
-    while request:
-        response = request.execute()
-
-        # Extract comments from the response
-        for item in response["items"]:
-            comment = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
-            comments.append(comment)
-
-        # Check if there is a next page
-        request = youtube.commentThreads().list_next(request, response)
-
-    return comments
 
 
 def get_video_details(video_id):
@@ -189,12 +164,21 @@ def check_video(video_id, channel_id, hours_from_publish):
             thread_conn,
         )
 
-        if detect_trending(channel_id, hours_from_publish, meta["views"], thread_conn):
+        if (
+            trending_multiplier := detect_trending(
+                channel_id, hours_from_publish, meta["views"], thread_conn
+            )
+            and trending_multiplier >= TRENDING_MULTIPLIER[hours_from_publish]
+        ):
             print(f"Trending video {video_id} for channel {channel_id}!!!")
             if telegram_chat_id:
                 send_message(
-                    f"Trending video {video_id} for channel {channel_id}!!!",
+                    f"Trending video {video_id} for channel {channel_id} with trending multiplier {trending_multiplier}",
                 )
+                send_message(
+                    f"Recommendations from comments: {get_recommendations(video_id)}"
+                )
+
             thread_cursor.execute(
                 "INSERT INTO trending_videos (video_yt_id, channel_yt_id) VALUES (?, ?)",
                 (video_id, channel_id),
@@ -206,7 +190,7 @@ def check_video(video_id, channel_id, hours_from_publish):
 
 def detect_trending(
     channel_id, hours_from_publish, views, thread_conn: sqlite3.Connection
-):
+) -> float:
     cursor = thread_conn.cursor()
     cursor.execute(
         f"""SELECT avg_views_{hours_from_publish}h FROM channels WHERE yt_id = ?""",
@@ -215,9 +199,9 @@ def detect_trending(
     avg_views = cursor.fetchone()[0]
 
     if not avg_views:
-        return False
+        return 0.0
 
-    return views >= avg_views * TRENDING_MULTIPLIER[hours_from_publish]
+    return float(views) / float(avg_views)
 
 
 def update_channel_stats(channel_id, thread_conn: sqlite3.Connection):

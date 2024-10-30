@@ -10,6 +10,7 @@ from telegram.ext import (
     filters,
 )
 from main import add_channel, remove_channel, server, get_channel_id_from_url
+from recommendations import get_recommendations
 from db import create_connection, create_tables
 
 TELEGRAM_API_KEY = os.environ.get("TELEGRAM_API_KEY")
@@ -29,7 +30,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
     await update.message.reply_text(
-        f"Hi {user.mention_markdown()}! Use /add_channel <channel_id> to add a channel, /remove_channel <channel_id> to remove a channel, and /start_server to start polling, /stop_server to stop polling.",
+        f"Hi {user.mention_markdown()}! Use /add_channel <channel_id> to add a channel, /remove_channel <channel_id> to remove a channel, and /start_server to start polling, /stop_server to stop polling, and /recommendations <video_id> to get recommendations for a video.",
     )
 
 
@@ -100,6 +101,16 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(update.message.text)
 
 
+async def recommendations(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /recommendations <video_id>")
+        return
+
+    video_id = context.args[0]
+    recommendations = get_recommendations(video_id)
+    await update.message.reply_text(recommendations)
+
+
 def main() -> None:
     """Start the bot."""
     global conn
@@ -115,6 +126,7 @@ def main() -> None:
     application.add_handler(CommandHandler("remove_channel", remove_channel_command))
     application.add_handler(CommandHandler("start_server", start_server_command))
     application.add_handler(CommandHandler("stop_server", stop_server_command))
+    application.add_handler(CommandHandler("recommendations", recommendations))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
     # Run the bot until the user presses Ctrl-C
