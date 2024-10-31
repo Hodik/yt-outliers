@@ -163,13 +163,10 @@ def check_video(video_id, channel_id, hours_from_publish):
             hours_from_publish,
             thread_conn,
         )
-
-        if (
-            trending_multiplier := detect_trending(
-                channel_id, hours_from_publish, meta["views"], thread_conn
-            )
-            and trending_multiplier >= TRENDING_MULTIPLIER[hours_from_publish]
-        ):
+        trending_multiplier = detect_trending(
+            channel_id, hours_from_publish, meta["views"], thread_conn
+        )
+        if trending_multiplier >= TRENDING_MULTIPLIER[hours_from_publish]:
             print(f"Trending video {video_id} for channel {channel_id}!!!")
             if telegram_chat_id:
                 send_message(
